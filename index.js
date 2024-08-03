@@ -10,7 +10,7 @@ const port = process.env.PORT || 3000;
 const token = '7471436103:AAH2tyLclgLuj9eDtdNvPOEmqmwT_ZsHO5g';
 const bot = new TelegramBot(token, { polling: true });
 
-const updatesChannelUrl = 'https://t.me/teraboxvideodownloader';
+const updatesChannelUrl = 'https://t.me/usefulltgbots';
 
 // Store user data and statistics
 const usersFilePath = path.resolve(__dirname, 'id.txt');
@@ -48,7 +48,7 @@ bot.onText(/\/start/, (msg) => {
   const welcomeMessage = `
     🎉 *Welcome to the AI Face Swap Bot!* 🤖
 
-    This bot allows you to swap faces in images using AI technology. Simply send your face image and the target image, and we'll swap the faces for you in seconds!
+   This bot allows you to swap faces in images using AI technology. Simply send your face image and the target image, and we'll swap the faces for you in seconds!
 
     *To get started, use the command /swap and follow the instructions.*
   `;
@@ -132,7 +132,7 @@ bot.on('photo', async (msg) => {
       const errorMsg = `
         ❌ *An error occurred while processing your request.*
 
-        Possible reasons:
+       Possible reasons:
         1. Server is under high load. Please try again later.
         2. The images you provided are not clear enough.
         3. The server might be experiencing technical difficulties.
