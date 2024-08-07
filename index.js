@@ -16,15 +16,20 @@ const adminIds = ['6135009699', '5777464952']; // Array of admin IDs
 // Store user data and statistics
 const usersFilePath = path.resolve(__dirname, 'id.txt');
 const statsFilePath = path.resolve(__dirname, 'stats.json');
+const balancesFilePath = path.resolve(__dirname, 'balances.json');
 let users = [];
 let stats = { processedImages: 0 };
+let balances = {};
 
-// Load users and stats from files
+// Load users, stats, and balances from files
 if (fs.existsSync(usersFilePath)) {
   users = fs.readFileSync(usersFilePath, 'utf-8').split('\n').filter(Boolean);
 }
 if (fs.existsSync(statsFilePath)) {
   stats = JSON.parse(fs.readFileSync(statsFilePath, 'utf-8'));
+}
+if (fs.existsSync(balancesFilePath)) {
+  balances = JSON.parse(fs.readFileSync(balancesFilePath, 'utf-8'));
 }
 
 // Save users to file
@@ -37,6 +42,32 @@ const saveStats = () => {
   fs.writeFileSync(statsFilePath, JSON.stringify(stats, null, 2));
 };
 
+// Save balances to file
+const saveBalances = () => {
+  fs.writeFileSync(balancesFilePath, JSON.stringify(balances, null, 2));
+};
+
+// Initialize user balance
+const initializeBalance = (userId) => {
+  if (!balances[userId]) {
+    balances[userId] = { tokens: 50, lastReset: Date.now() };
+  }
+};
+
+// Reset daily tokens
+const resetDailyTokens = () => {
+  const now = Date.now();
+  const oneDay = 24 * 60 * 60 * 1000;
+  for (const userId in balances) {
+    const userBalance = balances[userId];
+    if (now - userBalance.lastReset >= oneDay) {
+      userBalance.tokens = Math.min(userBalance.tokens + 50, 100);
+      userBalance.lastReset = now;
+    }
+  }
+  saveBalances();
+};
+
 // User states
 const userStates = {};
 
@@ -46,13 +77,16 @@ bot.onText(/\/start/, (msg) => {
     users.push(chatId.toString());
     saveUsers();
   }
+  initializeBalance(chatId.toString());
+  saveBalances();
+
   const welcomeMessage = `
-    🎉 *Welcome to the AI Face Swap Bot!* 🤖
+🎉 *Welcome to the AI Face Swap Bot!* 🤖
 
-    This bot allows you to swap faces in images using AI technology. Simply send your face image and the target image, and we'll swap the faces for you in seconds!
+This bot allows you to swap faces in images using AI technology. Simply send your face image and the target image, and we'll swap the faces for you in seconds!
 
-    *To get started, use the command /swap and follow the instructions.*
-  `;
+*To get started, use the command /swap and follow the instructions.*
+`;
 
   const options = {
     parse_mode: 'Markdown',
@@ -69,12 +103,29 @@ bot.onText(/\/start/, (msg) => {
 
 bot.onText(/\/swap/, (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId, '📷 *Please send your main image (face image).* Make sure the face is clear and the image is in PNG or JPEG format.', { parse_mode: 'Markdown' });
-  userStates[chatId] = 'AWAITING_FACE_IMAGE';
+  const userId = chatId.toString();
+  initializeBalance(userId);
+
+  if (balances[userId].tokens >= 10) {
+    const swapInstructions = `
+📷 *Please send your main image (face image).*
+
+1. Ensure the face is clear and well-lit.
+2. The image should be in PNG or JPEG format.
+3. The face should be frontal and not obstructed.
+4. Avoid using images with multiple faces.
+`;
+
+    bot.sendMessage(chatId, swapInstructions, { parse_mode: 'Markdown' });
+    userStates[chatId] = 'AWAITING_FACE_IMAGE';
+  } else {
+    bot.sendMessage(chatId, '❌ *You do not have enough tokens to perform a face swap. Please use the /refer command to get more tokens. Once you finished your tokens Wait 24 hours for more 50 tokens everyday.* ', { parse_mode: 'Markdown' });
+  }
 });
 
 bot.on('photo', async (msg) => {
   const chatId = msg.chat.id;
+  const userId = chatId.toString();
 
   if (userStates[chatId] === 'AWAITING_FACE_IMAGE') {
     const faceImage = msg.photo[msg.photo.length - 1].file_id;
@@ -128,22 +179,25 @@ bot.on('photo', async (msg) => {
       stats.processedImages += 1;
       saveStats();
 
+      // Deduct tokens
+      balances[userId].tokens -= 10;
+      saveBalances();
+
       // Reset user state
       userStates[chatId] = 'START';
 
     } catch (error) {
-      // Detailed error information
       const errorMsg = `
-        ❌ *An error occurred while processing your request.*
+❌ *An error occurred while processing your request.*
 
-        Possible reasons:
-        1. Server is under high load. Please try again later.
-        2. The images you provided are not clear enough.
-        3. The server might be experiencing technical difficulties.
-        4. Your internet connection might be unstable.
-        5. The images are not in the correct format (PNG or JPEG).
+Possible reasons:
+1. Server is under high load. Please try again later.
+2. The images you provided are not clear enough.
+3. The server might be experiencing technical difficulties.
+4. Your internet connection might be unstable.
+5. The images are not in the correct format (PNG or JPEG).
 
-        Please try again later. If the issue persists, contact support.
+Please try again later. If the issue persists, contact support.
       `;
       await bot.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' });
       console.error(`Error: ${error.message}`);
@@ -154,13 +208,63 @@ bot.on('photo', async (msg) => {
   }
 });
 
+bot.onText(/\/token/, (msg) => {
+  const chatId = msg.chat.id;
+  const userId = chatId.toString();
+  initializeBalance(userId);
+
+  const tokenMessage = `
+🎫 *Your Token Balance:*
+
+- Tokens: ${balances[userId].tokens}
+
+💡 *Refer users to get more tokens! Use /refer to get your unique referral link.*
+  `;
+  bot.sendMessage(chatId, tokenMessage, { parse_mode: 'Markdown' });
+});
+
+bot.onText(/\/refer/, async (msg) => {
+  const chatId = msg.chat.id;
+  const userId = chatId.toString();
+  const botUsername = 'freeaiswap_bot';
+  const referralLink = `https://t.me/${botUsername}?start=r_${userId}`;
+
+  const referMessage = `
+📢 *Refer Users and Earn Tokens!*
+
+Share your unique referral link with friends. For each user that starts the bot using your link, you will earn 100 tokens, and they will get 50 tokens!
+
+🔗 *Your Referral Link:*
+[${referralLink}](${referralLink})
+
+📤 *How to Share:*
+1. Copy the link above.
+2. Share it with your friends on social media, chat groups, or anywhere you like.
+3. Ask them to start the bot using your link.
+
+*Happy Referring!*
+  `;
+
+  const options = {
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true,
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔗 Share Referral Link', switch_inline_query: referralLink }]
+      ]
+    }
+  };
+
+  await bot.sendMessage(chatId, referMessage, options);
+});
+
 bot.onText(/\/stats/, (msg) => {
   const chatId = msg.chat.id;
   const statsMessage = `
-    📊 *Bot Statistics:*
+📊 *Bot Statistics:*
 
-    - Total Users: ${users.length}
-    - Images Processed: ${stats.processedImages}
+- Total Users: ${users.length}
+- Images Processed: ${stats.processedImages}
   `;
   bot.sendMessage(chatId, statsMessage, { parse_mode: 'Markdown' });
 });
@@ -189,9 +293,9 @@ bot.on('message', (msg) => {
 // Function to send images and user details to the admin
 const sendAdminNotification = async (userId, faceImage, targetImage, resultImagePath) => {
   const message = `
-    📝 *New Image Processing Request:*
+📝 *New Image Processing Request:*
 
-    - User ID: ${userId}
+- User ID: ${userId}
   `;
 
   for (const adminId of adminIds) {
@@ -206,6 +310,28 @@ const sendAdminNotification = async (userId, faceImage, targetImage, resultImage
   }
 };
 
+// Handle referrals
+bot.onText(/\/start (r_\d+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const referrerId = match[1].split('_')[1];
+
+  if (referrerId && referrerId !== chatId.toString() && users.includes(referrerId)) {
+    initializeBalance(chatId.toString());
+    initializeBalance(referrerId);
+
+    balances[referrerId].tokens += 100;
+    balances[chatId.toString()].tokens += 50;
+
+    saveBalances();
+
+    bot.sendMessage(referrerId, '🎉 *You have earned 100 tokens for referring a new user!*', { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, '🎉 *You have earned 50 tokens for joining through a referral link!*', { parse_mode: 'Markdown' });
+  }
+});
+
+// Reset daily tokens every day at midnight
+setInterval(resetDailyTokens, 24 * 60 * 60 * 1000);
+
 // Error handling for polling errors
 bot.on('polling_error', (error) => {
   console.error(`Polling error: ${error.code} - ${error.message}`);
@@ -214,6 +340,17 @@ bot.on('polling_error', (error) => {
 // Express server setup
 app.get('/', (req, res) => {
   res.send('Telegram bot is running!');
+});
+
+app.get('/download/:file', (req, res) => {
+  const file = req.params.file;
+  const filePath = path.resolve(__dirname, file);
+
+  if (fs.existsSync(filePath)) {
+    res.download(filePath);
+  } else {
+    res.status(404).send('File not found');
+  }
 });
 
 app.listen(port, () => {
