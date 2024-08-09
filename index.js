@@ -50,23 +50,29 @@ const saveBalances = () => {
 // Initialize user balance
 const initializeBalance = (userId) => {
   if (!balances[userId]) {
-    balances[userId] = { tokens: 50, lastReset: Date.now() };
+    balances[userId] = { tokens: 100, lastReset: Date.now() };
   }
 };
 
-// Reset daily tokens
+// Reset daily tokens and notify users
 const resetDailyTokens = () => {
   const now = Date.now();
   const oneDay = 24 * 60 * 60 * 1000;
   for (const userId in balances) {
     const userBalance = balances[userId];
     if (now - userBalance.lastReset >= oneDay) {
-      userBalance.tokens = Math.min(userBalance.tokens + 50, 100);
-      userBalance.lastReset = now;
+      const tokensBeforeReset = userBalance.tokens;
+      const tokensToAdd = Math.min(100, 100 - tokensBeforeReset); // Ensure the tokens don't exceed 100
+      if (tokensToAdd > 0) {
+        userBalance.tokens += tokensToAdd;
+        userBalance.lastReset = now;
+        bot.sendMessage(userId, `🎉 *Your free daily tokens have been credited!*\n\n💰 Your new balance is: ${userBalance.tokens} tokens`, { parse_mode: 'Markdown' });
+      }
     }
   }
   saveBalances();
 };
+
 
 // User states
 const userStates = {};
