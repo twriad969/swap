@@ -18,7 +18,7 @@ const usersFilePath = path.resolve(__dirname, 'id.txt');
 const statsFilePath = path.resolve(__dirname, 'stats.json');
 const balancesFilePath = path.resolve(__dirname, 'balances.json');
 let users = [];
-let stats = { processedImages: 0 };
+let stats = { processedImages: 0, referrals: {} }; // Include referrals
 let balances = {};
 
 // Load users, stats, and balances from files
@@ -50,8 +50,16 @@ const saveBalances = () => {
 // Initialize user balance
 const initializeBalance = (userId) => {
   if (!balances[userId]) {
-    balances[userId] = { tokens: 100, lastReset: Date.now() };
+    balances[userId] = { tokens: 100, lastReset: Date.now(), lastActive: Date.now() };
   }
+};
+
+// Remove invalid user IDs
+const removeInvalidUserId = (userId) => {
+  users = users.filter(id => id !== userId);
+  delete balances[userId];
+  saveUsers();
+  saveBalances();
 };
 
 // Reset daily tokens and notify users
@@ -66,16 +74,60 @@ const resetDailyTokens = () => {
       if (tokensToAdd > 0) {
         userBalance.tokens += tokensToAdd;
         userBalance.lastReset = now;
-        bot.sendMessage(userId, `🎉 *Your free daily tokens have been credited!*\n\n💰 Your new balance is: ${userBalance.tokens} tokens`, { parse_mode: 'Markdown' });
+        bot.sendMessage(userId, `🎉 *Your free daily tokens have been credited!*\n\n💰 Your new balance is: ${userBalance.tokens} tokens`, { parse_mode: 'Markdown' })
+          .catch((error) => {
+            console.error(`Failed to send message to ${userId}: ${error.message}`);
+            removeInvalidUserId(userId);
+          });
       }
     }
   }
   saveBalances();
 };
 
-
 // User states
 const userStates = {};
+
+// Send notification to all users about new features
+const notifyUsersAboutNewFeatures = (message) => {
+  for (const userId of users) {
+    bot.sendMessage(userId, message, { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send message to ${userId}: ${error.message}`);
+        removeInvalidUserId(userId);
+      });
+  }
+};
+
+// Check and notify inactive users
+const notifyInactiveUsers = () => {
+  const now = Date.now();
+  const inactivityThreshold = 7 * 24 * 60 * 60 * 1000; // 7 days
+  for (const userId in balances) {
+    const userBalance = balances[userId];
+    if (now - userBalance.lastActive >= inactivityThreshold) {
+      bot.sendMessage(userId, '👋 *We miss you!*\n\nIt looks like you haven’t used the bot in a while. Don’t forget to check out the new features we’ve added!', { parse_mode: 'Markdown' })
+        .catch((error) => {
+          console.error(`Failed to send inactivity notification to ${userId}: ${error.message}`);
+          removeInvalidUserId(userId);
+        });
+    }
+  }
+};
+
+// Notify users about new features when the bot starts
+const newFeaturesMessage = `
+🚀 *New Features Added!*
+
+1. 🔔 *Inactivity Reminders*: Stay active and enjoy the latest features! We'll remind you if you're away too long.
+2. 🤖 *Free AI FaceSwap Bot*: Try out our new FaceSwap Bot for free and swap faces effortlessly! Just use the /swap command.
+
+Enjoy the updates!
+`;
+notifyUsersAboutNewFeatures(newFeaturesMessage);
+
+// Check for inactivity every 24 hours
+setInterval(notifyInactiveUsers, 24 * 60 * 60 * 1000);
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -103,8 +155,14 @@ This bot allows you to swap faces in images using AI technology. Simply send you
     }
   };
 
-  bot.sendMessage(chatId, welcomeMessage, options);
+  bot.sendMessage(chatId, welcomeMessage, options)
+    .catch((error) => {
+      console.error(`Failed to send welcome message to ${chatId}: ${error.message}`);
+      removeInvalidUserId(chatId.toString());
+    });
   userStates[chatId] = 'START';
+  balances[chatId.toString()].lastActive = Date.now();
+  saveBalances();
 });
 
 bot.onText(/\/swap/, (msg) => {
@@ -122,11 +180,21 @@ bot.onText(/\/swap/, (msg) => {
 4. Avoid using images with multiple faces.
 `;
 
-    bot.sendMessage(chatId, swapInstructions, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, swapInstructions, { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send swap instructions to ${chatId}: ${error.message}`);
+        removeInvalidUserId(chatId.toString());
+      });
     userStates[chatId] = 'AWAITING_FACE_IMAGE';
   } else {
-    bot.sendMessage(chatId, '❌ *You do not have enough tokens to perform a face swap. Please use the /refer command to get more tokens. Once you finished your tokens Wait 24 hours for more 50 tokens everyday.* ', { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, '❌ *You do not have enough tokens to perform a face swap. Please use the /refer command to get more tokens. Once you finished your tokens Wait 24 hours for more 50 tokens everyday.* ', { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send token warning to ${chatId}: ${error.message}`);
+        removeInvalidUserId(chatId.toString());
+      });
   }
+  balances[chatId.toString()].lastActive = Date.now();
+  saveBalances();
 });
 
 bot.on('photo', async (msg) => {
@@ -139,7 +207,11 @@ bot.on('photo', async (msg) => {
       state: 'AWAITING_TARGET_IMAGE',
       faceImage: faceImage
     };
-    bot.sendMessage(chatId, '🖼️ *Main image received. Now, please send the target image.*', { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, '🖼️ *Main image received. Now, please send the target image.*', { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send message to ${chatId}: ${error.message}`);
+        removeInvalidUserId(chatId.toString());
+      });
   } else if (userStates[chatId] && userStates[chatId].state === 'AWAITING_TARGET_IMAGE') {
     const faceImage = userStates[chatId].faceImage;
     const targetImage = msg.photo[msg.photo.length - 1].file_id;
@@ -176,7 +248,11 @@ bot.on('photo', async (msg) => {
       await bot.deleteMessage(chatId, progressMsg.message_id);
 
       // Send the processed image to the user
-      await bot.sendPhoto(chatId, resultImagePath, { caption: '✅ *Image processed successfully!* Here is your face-swapped image. 😊', parse_mode: 'Markdown' });
+      await bot.sendPhoto(chatId, resultImagePath, { caption: '✅ *Image processed successfully!* Here is your face-swapped image. 😊', parse_mode: 'Markdown' })
+        .catch((error) => {
+          console.error(`Failed to send photo to ${chatId}: ${error.message}`);
+          removeInvalidUserId(chatId.toString());
+        });
 
       // Send the processed images and user details to the admin
       await sendAdminNotification(chatId, faceImage, targetImage, resultImagePath);
@@ -205,13 +281,22 @@ Possible reasons:
 
 Please try again later. If the issue persists, contact support.
       `;
-      await bot.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' });
-      console.error(`Error: ${error.message}`);
+      await bot.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' })
+        .catch((error) => {
+          console.error(`Failed to send error message to ${chatId}: ${error.message}`);
+          removeInvalidUserId(chatId.toString());
+        });
       userStates[chatId] = 'START';
     }
   } else {
-    await bot.sendMessage(chatId, 'ℹ️ *Please use the /swap command to start the face swap process.*', { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, 'ℹ️ *Please use the /swap command to start the face swap process.*', { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send message to ${chatId}: ${error.message}`);
+        removeInvalidUserId(chatId.toString());
+      });
   }
+  balances[chatId.toString()].lastActive = Date.now();
+  saveBalances();
 });
 
 bot.onText(/\/token/, (msg) => {
@@ -226,7 +311,13 @@ bot.onText(/\/token/, (msg) => {
 
 💡 *Refer users to get more tokens! Use /refer to get your unique referral link.*
   `;
-  bot.sendMessage(chatId, tokenMessage, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, tokenMessage, { parse_mode: 'Markdown' })
+    .catch((error) => {
+      console.error(`Failed to send token message to ${chatId}: ${error.message}`);
+      removeInvalidUserId(chatId.toString());
+    });
+  balances[chatId.toString()].lastActive = Date.now();
+  saveBalances();
 });
 
 bot.onText(/\/refer/, async (msg) => {
@@ -261,7 +352,13 @@ Share your unique referral link with friends. For each user that starts the bot 
     }
   };
 
-  await bot.sendMessage(chatId, referMessage, options);
+  await bot.sendMessage(chatId, referMessage, options)
+    .catch((error) => {
+      console.error(`Failed to send referral message to ${chatId}: ${error.message}`);
+      removeInvalidUserId(chatId.toString());
+    });
+  balances[chatId.toString()].lastActive = Date.now();
+  saveBalances();
 });
 
 bot.onText(/\/stats/, (msg) => {
@@ -272,27 +369,110 @@ bot.onText(/\/stats/, (msg) => {
 - Total Users: ${users.length}
 - Images Processed: ${stats.processedImages}
   `;
-  bot.sendMessage(chatId, statsMessage, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, statsMessage, { parse_mode: 'Markdown' })
+    .catch((error) => {
+      console.error(`Failed to send stats message to ${chatId}: ${error.message}`);
+      removeInvalidUserId(chatId.toString());
+    });
+  balances[chatId.toString()].lastActive = Date.now();
+  saveBalances();
+});
+
+bot.onText(/\/leaderboard/, (msg) => {
+  const chatId = msg.chat.id;
+
+  if (Object.keys(stats.referrals).length === 0) {
+    // No referrals made
+    bot.sendMessage(chatId, '📊 *Leaderboard:*\n\nNo referrals have been made yet.', { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send leaderboard message to ${chatId}: ${error.message}`);
+        removeInvalidUserId(chatId.toString());
+      });
+    return;
+  }
+
+  const sortedReferrals = Object.entries(stats.referrals)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5); // Get top 5
+
+  let leaderboardMessage = '🏆 *Top 5 Referrers:*\n\n';
+  sortedReferrals.forEach(([userId, count], index) => {
+    leaderboardMessage += `${index + 1}. User ID: ${userId} - Referrals: ${count}\n`;
+  });
+
+  bot.sendMessage(chatId, leaderboardMessage, { parse_mode: 'Markdown' })
+    .catch((error) => {
+      console.error(`Failed to send leaderboard message to ${chatId}: ${error.message}`);
+      removeInvalidUserId(chatId.toString());
+    });
+  balances[chatId.toString()].lastActive = Date.now();
+  saveBalances();
 });
 
 bot.onText(/\/broad (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const broadcastMessage = match[1];
+
   for (const userId of users) {
-    try {
-      await bot.sendMessage(userId, broadcastMessage);
-    } catch (error) {
-      console.error(`Failed to send message to ${userId}: ${error.message}`);
+    await bot.sendMessage(userId, broadcastMessage)
+      .catch((error) => {
+        console.error(`Failed to send message to ${userId}: ${error.message}`);
+        removeInvalidUserId(userId);
+      });
+  }
+
+  bot.sendMessage(chatId, '📣 *Message broadcasted to all users.*', { parse_mode: 'Markdown' })
+    .catch((error) => {
+      console.error(`Failed to send broadcast confirmation to ${chatId}: ${error.message}`);
+      removeInvalidUserId(chatId.toString());
+    });
+  balances[chatId.toString()].lastActive = Date.now();
+  saveBalances();
+});
+
+// Admin-only /bonus command
+bot.onText(/\/bonus/, (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!adminIds.includes(chatId.toString())) {
+    bot.sendMessage(chatId, '❌ *You do not have permission to use this command.*', { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send permission denied message to ${chatId}: ${error.message}`);
+        removeInvalidUserId(chatId.toString());
+      });
+    return;
+  }
+
+  let bonusCount = 0;
+  for (const userId in balances) {
+    if (balances[userId].tokens === 0) {
+      balances[userId].tokens = 50; // Reset tokens to 50 as a bonus
+      bonusCount++;
+      bot.sendMessage(userId, `🎁 *You've received a bonus from the admin!*\n\n💰 Your new balance is: ${balances[userId].tokens} tokens`, { parse_mode: 'Markdown' })
+        .catch((error) => {
+          console.error(`Failed to send bonus message to ${userId}: ${error.message}`);
+          removeInvalidUserId(userId);
+        });
     }
   }
-  bot.sendMessage(chatId, '📣 *Message broadcasted to all users.*', { parse_mode: 'Markdown' });
+
+  saveBalances();
+  bot.sendMessage(chatId, `🎉 *Bonus awarded to ${bonusCount} users.*`, { parse_mode: 'Markdown' })
+    .catch((error) => {
+      console.error(`Failed to send bonus confirmation to ${chatId}: ${error.message}`);
+      removeInvalidUserId(chatId.toString());
+    });
 });
 
 bot.on('message', (msg) => {
   if (msg.text && msg.text.startsWith('/')) {
     return;
   } else if (!msg.photo && (userStates[msg.chat.id] === 'START' || !userStates[msg.chat.id])) {
-    bot.sendMessage(msg.chat.id, 'ℹ️ *Please use the /swap command to start the face swap process.*', { parse_mode: 'Markdown' });
+    bot.sendMessage(msg.chat.id, 'ℹ️ *Please use the /swap command to start the face swap process.*', { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send message to ${msg.chat.id}: ${error.message}`);
+        removeInvalidUserId(msg.chat.id.toString());
+      });
   }
 });
 
@@ -306,10 +486,32 @@ const sendAdminNotification = async (userId, faceImage, targetImage, resultImage
 
   for (const adminId of adminIds) {
     try {
+      // Prepare the media array
+      const media = [
+        {
+          type: 'photo',
+          media: faceImage,
+          caption: '📷 Face Image',
+          parse_mode: 'Markdown'
+        },
+        {
+          type: 'photo',
+          media: targetImage,
+          caption: '🖼️ Target Image',
+          parse_mode: 'Markdown'
+        },
+        {
+          type: 'photo',
+          media: resultImagePath,
+          caption: '✅ Result Image',
+          parse_mode: 'Markdown'
+        }
+      ];
+
+      // Send the message and the media group
       await bot.sendMessage(adminId, message, { parse_mode: 'Markdown' });
-      await bot.sendPhoto(adminId, faceImage, { caption: '📷 Face Image' });
-      await bot.sendPhoto(adminId, targetImage, { caption: '🖼️ Target Image' });
-      await bot.sendPhoto(adminId, resultImagePath, { caption: '✅ Result Image' });
+      await bot.sendMediaGroup(adminId, media);
+
     } catch (error) {
       console.error(`Failed to send message to admin (${adminId}): ${error.message}`);
     }
@@ -328,11 +530,28 @@ bot.onText(/\/start (r_\d+)/, (msg, match) => {
     balances[referrerId].tokens += 100;
     balances[chatId.toString()].tokens += 50;
 
-    saveBalances();
+    // Track referrals in stats
+    if (!stats.referrals[referrerId]) {
+      stats.referrals[referrerId] = 0;
+    }
+    stats.referrals[referrerId] += 1;
 
-    bot.sendMessage(referrerId, '🎉 *You have earned 100 tokens for referring a new user!*', { parse_mode: 'Markdown' });
-    bot.sendMessage(chatId, '🎉 *You have earned 50 tokens for joining through a referral link!*', { parse_mode: 'Markdown' });
+    saveBalances();
+    saveStats();
+
+    bot.sendMessage(referrerId, '🎉 *You have earned 100 tokens for referring a new user!*', { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send referral reward to ${referrerId}: ${error.message}`);
+        removeInvalidUserId(referrerId);
+      });
+    bot.sendMessage(chatId, '🎉 *You have earned 50 tokens for joining through a referral link!*', { parse_mode: 'Markdown' })
+      .catch((error) => {
+        console.error(`Failed to send referral reward to ${chatId}: ${error.message}`);
+        removeInvalidUserId(chatId.toString());
+      });
   }
+  balances[chatId.toString()].lastActive = Date.now();
+  saveBalances();
 });
 
 // Reset daily tokens every day at midnight
