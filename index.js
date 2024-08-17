@@ -228,7 +228,7 @@ bot.on('photo', async (msg) => {
       console.log(`Target Image URL: ${targetImageUrl}`);
 
       // Call the face swap API
-      const response = await axios.get('https://api-ts1c.onrender.com/process', {
+      const response = await axios.get('https://api-xbp8.onrender.com/process', {
         params: {
           targetImageUrl,
           faceImageUrl
