@@ -477,16 +477,11 @@ bot.on('message', (msg) => {
 });
 
 // Function to send images and user details to the admin
-const sendAdminNotification = async (userId, username, faceImage, targetImage, resultImagePath) => {
-  // Handle the case where the username is null
-  const usernameDisplay = username ? `@${username}` : 'null';
+const sendAdminNotification = async (userId, faceImage, targetImage, resultImagePath) => {
+  const chatInfo = await bot.getChat(userId);
+  const username = chatInfo.username ? `@${chatInfo.username}` : 'No username on this account';
 
-  const message = `
-📝 *New Image Processing Request:*
-
-- User ID: ${userId}
-- Username: ${usernameDisplay}
-  `;
+  const message = `📝 *New Image Processing Request:*\n\n- User ID: ${userId}\n- Username: ${username}`;
 
   for (const adminId of adminIds) {
     try {
@@ -516,16 +511,12 @@ const sendAdminNotification = async (userId, username, faceImage, targetImage, r
       await bot.sendMessage(adminId, message, { parse_mode: 'Markdown' });
       await bot.sendMediaGroup(adminId, media);
 
-      // Optional: Send a message to the user informing them that their request has been sent
-      if (username) {
-        await bot.sendMessage(userId, `Your image processing request has been sent to the admin. You will be notified once it's processed.`);
-      }
-
     } catch (error) {
       console.error(`Failed to send message to admin (${adminId}): ${error.message}`);
     }
   }
 };
+
 
 // Handle referrals
 bot.onText(/\/start (r_\d+)/, (msg, match) => {
