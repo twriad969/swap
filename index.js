@@ -16,7 +16,7 @@ process.on('unhandledRejection', (reason, promise) => {
 const token = '7471436103:AAH2tyLclgLuj9eDtdNvPOEmqmwT_ZsHO5g'; // Replace with your bot token
 const bot = new TelegramBot(token, { polling: true });
 
-const updatesChannelUrl = 'https://t.me/usefulltgbots';
+const updatesChannelUrl = 'https://t.me/linkswalabhai69';
 const adminIds = ['6135009699', '5777464952']; // Array of admin IDs
 
 // Store user data and statistics
@@ -137,7 +137,7 @@ setInterval(notifyInactiveUsers, 24 * 60 * 60 * 1000);
 // Force user to subscribe to updates channel
 const checkSubscription = async (userId) => {
   try {
-    const member = await bot.getChatMember('@usefulltgbots', userId);
+    const member = await bot.getChatMember('@linkswalabhai69', userId);
     return ['member', 'administrator', 'creator'].includes(member.status);
   } catch (error) {
     console.error(`Failed to check subscription status for ${userId}: ${error.message}`);
