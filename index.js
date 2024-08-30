@@ -7,7 +7,13 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 3000;
 
-const token = '7471436103:AAH2tyLclgLuj9eDtdNvPOEmqmwT_ZsHO5g';
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Here, you can log the error to a file or perform any other necessary action
+});
+
+
+const token = '7471436103:AAH2tyLclgLuj9eDtdNvPOEmqmwT_ZsHO5g'; // Replace with your bot token
 const bot = new TelegramBot(token, { polling: true });
 
 const updatesChannelUrl = 'https://t.me/usefulltgbots';
@@ -117,9 +123,8 @@ const notifyInactiveUsers = () => {
 
 // Notify users about new features when the bot starts
 const newFeaturesMessage = `
-🚀 *New Features Added!*
+🚀 *Bot Online!*
 
-1. 🔔 *Inactivity Reminders*: Stay active and enjoy the latest features! We'll remind you if you're away too long.
 2. 🤖 *Free AI FaceSwap Bot*: Try out our new FaceSwap Bot for free and swap faces effortlessly! Just use the /swap command.
 
 Enjoy the updates!
@@ -129,40 +134,120 @@ notifyUsersAboutNewFeatures(newFeaturesMessage);
 // Check for inactivity every 24 hours
 setInterval(notifyInactiveUsers, 24 * 60 * 60 * 1000);
 
-bot.onText(/\/start/, (msg) => {
+// Force user to subscribe to updates channel
+const checkSubscription = async (userId) => {
+  try {
+    const member = await bot.getChatMember('@usefulltgbots', userId);
+    return ['member', 'administrator', 'creator'].includes(member.status);
+  } catch (error) {
+    console.error(`Failed to check subscription status for ${userId}: ${error.message}`);
+    return false;
+  }
+};
+
+
+bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
-  if (!users.includes(chatId.toString())) {
-    users.push(chatId.toString());
+  const userId = chatId.toString();
+
+  if (!users.includes(userId)) {
+    users.push(userId);
     saveUsers();
   }
-  initializeBalance(chatId.toString());
+  initializeBalance(userId);
   saveBalances();
 
-  const welcomeMessage = `
+  const isSubscribed = await checkSubscription(userId);
+
+  if (isSubscribed) {
+    const welcomeMessage = `
 🎉 *Welcome to the AI Face Swap Bot!* 🤖
 
 This bot allows you to swap faces in images using AI technology. Simply send your face image and the target image, and we'll swap the faces for you in seconds!
 
 *To get started, use the command /swap and follow the instructions.*
+
 `;
 
-  const options = {
-    parse_mode: 'Markdown',
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '📢 Updates Channel', url: updatesChannelUrl }]
-      ]
-    }
-  };
+    const options = {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📢 Updates Channel', url: updatesChannelUrl }]
+        ]
+      }
+    };
 
-  bot.sendMessage(chatId, welcomeMessage, options)
-    .catch((error) => {
-      console.error(`Failed to send welcome message to ${chatId}: ${error.message}`);
-      removeInvalidUserId(chatId.toString());
-    });
+    bot.sendMessage(chatId, welcomeMessage, options)
+      .catch((error) => {
+        console.error(`Failed to send welcome message to ${chatId}: ${error.message}`);
+        removeInvalidUserId(chatId.toString());
+      });
+
+  } else {
+    const subscribeMessage = `
+🎉 *Welcome to the AI Face Swap Bot!* 🤖
+
+This bot allows you to swap faces in images using AI technology. Simply send your face image and the target image, and we'll swap the faces for you in seconds!
+
+*To get started, use the command /swap and follow the instructions.*
+
+*You need to subscribe to the updates channel to use this bot.*
+
+`;
+
+    const options = {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📢 Updates Channel', url: updatesChannelUrl }],
+          [{ text: '✅ Check Subscription', callback_data: 'check_subscription' }]
+        ]
+      }
+    };
+
+    bot.sendMessage(chatId, subscribeMessage, options)
+      .catch((error) => {
+        console.error(`Failed to send subscription message to ${chatId}: ${error.message}`);
+        removeInvalidUserId(chatId.toString());
+      });
+  }
+
   userStates[chatId] = 'START';
-  balances[chatId.toString()].lastActive = Date.now();
+  balances[userId].lastActive = Date.now();
   saveBalances();
+});
+
+// Handle subscription check
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const userId = chatId.toString();
+
+  if (query.data === 'check_subscription') {
+    const isSubscribed = await checkSubscription(userId);
+
+    if (isSubscribed) {
+      const successMessage = `
+🎉 *Welcome to the AI Face Swap Bot!* 🤖
+
+This bot allows you to swap faces in images using AI technology. Simply send your face image and the target image, and we'll swap the faces for you in seconds!
+
+*To get started, use the command /swap and follow the instructions.*
+
+      `;
+      bot.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' })
+        .catch((error) => {
+          console.error(`Failed to send subscription success message to ${chatId}: ${error.message}`);
+          removeInvalidUserId(chatId.toString());
+        });
+    } else {
+      bot.sendMessage(chatId, '❌ *You are not subscribed to the updates channel.* Please subscribe and try again.', { parse_mode: 'Markdown' })
+        .catch((error) => {
+          console.error(`Failed to send subscription error message to ${chatId}: ${error.message}`);
+          removeInvalidUserId(chatId.toString());
+        });
+    }
+  }
 });
 
 bot.onText(/\/swap/, (msg) => {
@@ -187,7 +272,7 @@ bot.onText(/\/swap/, (msg) => {
       });
     userStates[chatId] = 'AWAITING_FACE_IMAGE';
   } else {
-    bot.sendMessage(chatId, '❌ *You do not have enough tokens to perform a face swap. Please use the /refer command to get more tokens. Once you finished your tokens Wait 24 hours for more 50 tokens everyday.* ', { parse_mode: 'Markdown' })
+    bot.sendMessage(chatId, '❌ *You do not have enough tokens to perform a face swap. Please use the /refer command to get more tokens. Once you finished your tokens Wait 24 hours for more 50 tokens everyday.*', { parse_mode: 'Markdown' })
       .catch((error) => {
         console.error(`Failed to send token warning to ${chatId}: ${error.message}`);
         removeInvalidUserId(chatId.toString());
@@ -516,7 +601,6 @@ const sendAdminNotification = async (userId, faceImage, targetImage, resultImage
     }
   }
 };
-
 
 // Handle referrals
 bot.onText(/\/start (r_\d+)/, (msg, match) => {
