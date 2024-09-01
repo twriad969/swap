@@ -16,7 +16,7 @@ process.on('unhandledRejection', (reason, promise) => {
 const token = '7471436103:AAH2tyLclgLuj9eDtdNvPOEmqmwT_ZsHO5g'; // Replace with your bot token
 const bot = new TelegramBot(token, { polling: true });
 
-const updatesChannelUrl = 'https://t.me/linkswalabhai69';
+const updatesChannelUrl = 'https://t.me/usefulltgbots';
 const adminIds = ['6135009699', '5777464952']; // Array of admin IDs
 
 // Store user data and statistics
@@ -137,7 +137,7 @@ setInterval(notifyInactiveUsers, 24 * 60 * 60 * 1000);
 // Force user to subscribe to updates channel
 const checkSubscription = async (userId) => {
   try {
-    const member = await bot.getChatMember('@linkswalabhai69', userId);
+    const member = await bot.getChatMember('usefulltgbots', userId);
     return ['member', 'administrator', 'creator'].includes(member.status);
   } catch (error) {
     console.error(`Failed to check subscription status for ${userId}: ${error.message}`);
@@ -298,7 +298,7 @@ bot.on('photo', async (msg) => {
         removeInvalidUserId(chatId.toString());
       });
   } else if (userStates[chatId] && userStates[chatId].state === 'AWAITING_TARGET_IMAGE') {
-    const faceImage = userStates[chatId].faceImage;
+    const faceImage = userStates[chatId].faceImage;l
     const targetImage = msg.photo[msg.photo.length - 1].file_id;
 
     // Send progress message
